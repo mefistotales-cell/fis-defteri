@@ -1,0 +1,1 @@
+if('serviceWorker' in navigator) {window.addEventListener('load', () => {navigator.serviceWorker.register('/fis-defteri/sw.js', { scope: '/fis-defteri/' })})}
