@@ -3,11 +3,17 @@ import { cloneColumns, DEFAULT_COLUMNS, mergeColumnMaps } from './columns.ts';
 import type { AppSettings, ProviderId } from './types.ts';
 
 export const SETTINGS_KEY = 'haskara.fis-defteri.settings.v1';
+export const VIEW_MONTH_KEY = 'haskara.fis-defteri.month';
+
+const RETIRED_MODELS: Record<string, string> = {
+  'gemini-2.5-flash': 'gemini-flash-latest',
+  'google/gemini-2.5-flash': 'google/gemini-flash-latest',
+};
 
 export const PROVIDERS: Record<ProviderId, { label: string; model: string; baseUrl: string; hint: string }> = {
   gemini: {
     label: 'Google Gemini',
-    model: 'gemini-2.5-flash',
+    model: 'gemini-flash-latest',
     baseUrl: '',
     hint: 'Telefonda doğrudan çalışır ve fiş okumada yeterlidir. Anahtar: aistudio.google.com/apikey',
   },
@@ -19,7 +25,7 @@ export const PROVIDERS: Record<ProviderId, { label: string; model: string; baseU
   },
   openrouter: {
     label: 'OpenRouter',
-    model: 'google/gemini-2.5-flash',
+    model: 'google/gemini-flash-latest',
     baseUrl: 'https://openrouter.ai/api/v1',
     hint: 'Tek anahtarla birçok model. Anahtar: openrouter.ai/keys',
   },
@@ -41,6 +47,8 @@ export function defaultSettings(): AppSettings {
     csvAyrac: ',',
     fisLogoTip: 4,
     faturaLogoTip: 1,
+    firmaUnvan: 'Haskara Tarım',
+    firmaVkn: '',
     hesaplar: structuredClone(DEFAULT_ACCOUNTS),
     sutunlar: {
       lucaFatura: cloneColumns(DEFAULT_COLUMNS.lucaFatura),
@@ -59,12 +67,14 @@ export function mergeSettings(value: unknown): AppSettings {
   return {
     provider,
     apiKey: typeof raw.apiKey === 'string' ? raw.apiKey : '',
-    model: typeof raw.model === 'string' ? raw.model : PROVIDERS[provider].model,
+    model: resolveStoredModel(raw.model, provider),
     baseUrl: typeof raw.baseUrl === 'string' ? raw.baseUrl : PROVIDERS[provider].baseUrl,
     dosyaOneki: typeof raw.dosyaOneki === 'string' && raw.dosyaOneki.trim() ? raw.dosyaOneki.trim() : 'Haskara',
     csvAyrac: raw.csvAyrac === ';' ? ';' : ',',
     fisLogoTip: numberOr(raw.fisLogoTip, 4),
     faturaLogoTip: numberOr(raw.faturaLogoTip, 1),
+    firmaUnvan: typeof raw.firmaUnvan === 'string' && raw.firmaUnvan.trim() ? raw.firmaUnvan.trim() : 'Haskara Tarım',
+    firmaVkn: typeof raw.firmaVkn === 'string' ? raw.firmaVkn.trim() : '',
     hesaplar: mergeAccounts(raw.hesaplar),
     sutunlar: mergeColumnMaps(raw.sutunlar),
   };
@@ -91,6 +101,12 @@ export function resolvedModel(settings: AppSettings): string {
 
 export function resolvedBaseUrl(settings: AppSettings): string {
   return settings.baseUrl.trim() || PROVIDERS[settings.provider].baseUrl;
+}
+
+function resolveStoredModel(value: unknown, provider: ProviderId): string {
+  const fallback = PROVIDERS[provider].model;
+  if (typeof value !== 'string' || !value.trim()) return fallback;
+  return RETIRED_MODELS[value.trim()] ?? value.trim();
 }
 
 function isProvider(value: unknown): value is ProviderId {

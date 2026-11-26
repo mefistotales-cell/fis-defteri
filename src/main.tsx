@@ -9,8 +9,11 @@ import '@fontsource/source-sans-3/latin-ext-600.css';
 import '@fontsource/source-sans-3/latin-700.css';
 import '@fontsource/source-sans-3/latin-ext-700.css';
 import App from './App.tsx';
+import { registerAppServiceWorker } from './sw-register.ts';
 import { StoreProvider } from './store.tsx';
 import './index.css';
+
+registerAppServiceWorker();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

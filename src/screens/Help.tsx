@@ -32,7 +32,7 @@ export function Help() {
           <li>Açıklama → Açıklama</li>
           <li>Matrah, KDV, Toplam, Tevkifat → sütun türü Tutar</li>
           <li>VKN/TCKN → Vergi No / T.C. Kimlik No ile hesap belirleme</li>
-          <li>Karşı Hesap → matrahın gideceği hesap (varsayılan 770)</li>
+          <li>Karşı Hesap → matrahın gideceği hesap (alış mal 153, alış hizmet 770)</li>
         </ul>
         <p className="mt-2 text-[17px] leading-relaxed">
           Nakit fişlerde fiş keserken “Nakit işlemler” kutusunu işaretleyin; toplam kasaya gider. CSV’yi Excel’de açıp yeniden kaydetmeyin, sütunlar kayabilir. Ondalık ayracı noktadır (1234.56), tarih GG.AA.YYYY’dir. Kaynak: Luca destek belgesi 01.02.11, Nisan 2021. O belgedeki örnek sütunlar %8 ve %18’dir; uygulama güncel %1, %10 ve %20 kullanır.
@@ -57,7 +57,7 @@ export function Help() {
           Logo İşbaşı’nda ExcelTrans yoktur ve herkese açık sabit bir alım faturası Excel şablonu doğrulanamadı. İşbaşı için muhasebeci özetini kullanın ya da sütunları İşbaşı’nın kendi içe alma ekranına göre yeniden adlandırın.
         </p>
         <p className="mt-2 text-sm text-muted">
-          Logo fatura tipi sayısı varsayımdır: fiş 4 (alınan hizmet), fatura 1 (mal alım). Logo’nun fatura türü kodudur, resmi bir Excel başlığı değildir.
+          Logo fatura tipi sayısı varsayımdır: alış mal 1, alış hizmet 4, satış mal 8, satış hizmet 9, müstahsil makbuzu 26. 14 verilen fiyat farkıdır. Sayı Logo’nun fatura türü kodudur, resmi bir Excel başlığı değildir. Ayarlar’dan değişir.
         </p>
       </section>
       <section className="rounded-3xl bg-card p-4">
@@ -65,7 +65,8 @@ export function Help() {
         <ul className="mt-2 list-disc space-y-1 pl-5 text-[17px] leading-relaxed">
           <li>Luca fatura sütunlarının sırası ve adları, resmi kural ekranına göre kuruldu; Luca’nın indirdiğiniz şablonuyla aynı olmayabilir.</li>
           <li>Luca fişte Evrak No, Evrak Tarihi ve Açıklama resmi zorunlu listedeki beş alanın yanına eklendi. İsterseniz kapatın.</li>
-          <li>Belge türü sütunu kapalı gelir. Açarsanız fiş için FŞ, fatura için FT yazar. Luca’nın stoklu örneği “FT-Fatura” der.</li>
+          <li>Belge türü sütunu kapalı gelir. Açarsanız fiş için FŞ, fatura için FT, müstahsil için MM yazar. Luca’nın stoklu örneği “FT-Fatura” der.</li>
+          <li>Müstahsil makbuzu her zaman alıştır. Brüt 153 borç, gelir vergisi stopajı 360 alacak, Bağ-Kur/SGK 361 alacak, net ödeme nakitse 100 değilse 320 alacak. Borsa tescil ve mera fonu da varsayılan 360’tır; Ayarlar’dan ayrılır. KDV sayfalarına yazılmaz, Mustahsil sayfasındadır.</li>
           <li>%8 ve %18 sütunları kapalıdır. Eski oran, %10 veya %20 diye yazılmaz; açıklamada ve fiş satırında durur.</li>
           <li>Toplam tutmuyorsa fiş dengelenir, satırda FARK yazar. Kaydı kesmeden belgeye bakın.</li>
           <li>Tevkifat okunmaz, sütun 0 gelir.</li>

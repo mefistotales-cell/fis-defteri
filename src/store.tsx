@@ -1,10 +1,13 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { clearDocuments, deleteDocument, listDocuments, putDocument } from './lib/db.ts';
+import { clearDocuments, deleteDocument, listDocuments, putDocument, saveErrorMessage } from './lib/db.ts';
+import { currentMonth, saveSuccessMessage } from './lib/dates.ts';
+import { VIEW_MONTH_KEY } from './lib/settings.ts';
 import { prepareImage } from './lib/image.ts';
 import { SAMPLES } from './lib/samples.ts';
 import { loadSettings, saveSettings } from './lib/settings.ts';
 import type { AppSettings, DocumentFields, SavedDocument } from './lib/types.ts';
 import { emptyFields } from './lib/types.ts';
+import { applyFirma } from './lib/classify.ts';
 import { extractFromImage } from './lib/vision.ts';
 
 export interface QueueItem {
@@ -17,21 +20,33 @@ export interface QueueItem {
   error?: string;
 }
 
+export interface AppNotice {
+  tone: 'ok' | 'bad';
+  text: string;
+}
+
+export interface SaveResult {
+  ok: boolean;
+  message: string;
+}
+
 interface StoreValue {
   ready: boolean;
   settings: AppSettings;
   updateSettings: (settings: AppSettings) => void;
   docs: SavedDocument[];
+  notice: AppNotice | null;
+  dismissNotice: () => void;
   reload: () => Promise<void>;
   queue: QueueItem[];
   preparing: boolean;
   progress: { done: number; total: number };
   startFiles: (files: File[]) => Promise<void>;
   startManual: () => void;
-  saveCurrent: (fields: DocumentFields) => Promise<void>;
+  saveCurrent: (fields: DocumentFields) => Promise<SaveResult>;
   discardCurrent: () => void;
   retryCurrent: () => void;
-  saveExisting: (document: SavedDocument, fields: DocumentFields) => Promise<void>;
+  saveExisting: (document: SavedDocument, fields: DocumentFields) => Promise<SaveResult>;
   removeDocument: (id: string) => Promise<void>;
   removeAll: () => Promise<void>;
   loadSamples: () => Promise<void>;
@@ -46,6 +61,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [preparing, setPreparing] = useState(false);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
+  const [notice, setNotice] = useState<AppNotice | null>(null);
   const started = useRef<string | null>(null);
   const settingsRef = useRef(settings);
 
@@ -88,7 +104,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           );
           return;
         }
-        const fields = await extractFromImage(active, image);
+        const extracted = await extractFromImage(active, image);
+        const fields = applyFirma(extracted, { unvan: active.firmaUnvan, vkn: active.firmaVkn });
         setQueue((items) => items.map((item) => (item.localId === localId ? { ...item, phase: 'ready', fields } : item)));
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Belge okunamadı.';
@@ -165,20 +182,42 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     window.location.hash = '#/yeni';
   }, [queue]);
 
+  const dismissNotice = useCallback(() => setNotice(null), []);
+
+  const rememberSavedMonth = useCallback((tarih: string, createdAt: string) => {
+    const viewMonth = sessionStorage.getItem(VIEW_MONTH_KEY) || currentMonth();
+    const saved = saveSuccessMessage(viewMonth, tarih, createdAt);
+    sessionStorage.setItem(VIEW_MONTH_KEY, saved.month);
+    setNotice({ tone: 'ok', text: saved.text });
+    return saved.text;
+  }, []);
+
   const saveCurrent = useCallback(
-    async (fields: DocumentFields) => {
+    async (fields: DocumentFields): Promise<SaveResult> => {
       const item = queue[0];
-      if (!item) return;
-      const now = new Date().toISOString();
-      await putDocument({ id: crypto.randomUUID(), createdAt: now, updatedAt: now, image: item.image, fields });
-      if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
-      const remaining = queue.length - 1;
-      setQueue((items) => items.slice(1));
-      setProgress((state) => ({ ...state, done: state.done + 1 }));
-      await reload();
-      if (remaining <= 0) window.location.hash = '#/';
+      if (!item) {
+        const message = 'Kaydedilecek belge bulunamadı. Fotoğrafı yeniden seçin.';
+        setNotice({ tone: 'bad', text: message });
+        return { ok: false, message };
+      }
+      try {
+        const now = new Date().toISOString();
+        await putDocument({ id: crypto.randomUUID(), createdAt: now, updatedAt: now, image: item.image, fields });
+        const message = rememberSavedMonth(fields.tarih, now);
+        if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+        const remaining = queue.length - 1;
+        setQueue((items) => items.slice(1));
+        setProgress((state) => ({ ...state, done: state.done + 1 }));
+        await reload();
+        if (remaining <= 0) window.location.hash = '#/';
+        return { ok: true, message };
+      } catch (error) {
+        const message = saveErrorMessage(error);
+        setNotice({ tone: 'bad', text: message });
+        return { ok: false, message };
+      }
     },
-    [queue, reload],
+    [queue, reload, rememberSavedMonth],
   );
 
   const discardCurrent = useCallback(() => {
@@ -201,12 +240,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [queue]);
 
   const saveExisting = useCallback(
-    async (document: SavedDocument, fields: DocumentFields) => {
-      await putDocument({ ...document, fields, updatedAt: new Date().toISOString() });
-      await reload();
-      window.location.hash = '#/';
+    async (document: SavedDocument, fields: DocumentFields): Promise<SaveResult> => {
+      try {
+        const updatedAt = new Date().toISOString();
+        await putDocument({ ...document, fields, updatedAt });
+        const message = rememberSavedMonth(fields.tarih, document.createdAt);
+        await reload();
+        window.location.hash = '#/';
+        return { ok: true, message };
+      } catch (error) {
+        const message = saveErrorMessage(error);
+        setNotice({ tone: 'bad', text: message });
+        return { ok: false, message };
+      }
     },
-    [reload],
+    [reload, rememberSavedMonth],
   );
 
   const removeDocument = useCallback(
@@ -244,6 +292,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       settings,
       updateSettings,
       docs,
+      notice,
+      dismissNotice,
       reload,
       queue,
       preparing,
@@ -263,6 +313,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       settings,
       updateSettings,
       docs,
+      notice,
+      dismissNotice,
       reload,
       queue,
       preparing,

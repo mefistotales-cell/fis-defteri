@@ -1,4 +1,5 @@
 import { todayIso } from './dates.ts';
+import { mustahsilMath } from './mustahsil.ts';
 import { formatTr, fromKurus, toKurus } from './money.ts';
 import { digitsOnly, isValidTckn, isValidVkn } from './taxId.ts';
 import type { DocumentFields, FieldWarning } from './types.ts';
@@ -103,7 +104,11 @@ export function validateDocument(fields: DocumentFields, now = new Date()): Fiel
   }
 
   if (!fields.belgeNo.trim()) {
-    warnings.push({ field: 'belgeNo', level: 'uyari', message: 'Fiş veya fatura numarası yok.' });
+    warnings.push({
+      field: 'belgeNo',
+      level: 'uyari',
+      message: fields.belgeTuru === 'mustahsil' ? 'Makbuz numarası yok.' : 'Fiş veya fatura numarası yok.',
+    });
   }
 
   if (fields.belgeTuru === 'fis' && !fields.zNo.trim() && !fields.ekuNo.trim()) {
@@ -143,15 +148,18 @@ export function validateDocument(fields: DocumentFields, now = new Date()): Fiel
     }
   });
 
-  if (fields.kdvSatirlari.length === 0) {
+  if (fields.belgeTuru === 'mustahsil') {
+    warnings.push(...mustahsilWarnings(fields));
+  } else if (fields.kdvSatirlari.length === 0) {
     warnings.push({ field: 'kdv', level: 'uyari', message: 'KDV dökümü yok.' });
   }
 
-  if (fields.toplam == null) {
+  const toplam = fields.toplam;
+  if (fields.belgeTuru !== 'mustahsil' && toplam == null) {
     warnings.push({ field: 'toplam', level: 'hata', message: 'Toplam yok.' });
-  } else if (fields.toplam < 0) {
+  } else if (toplam != null && toplam < 0) {
     warnings.push({ field: 'toplam', level: 'hata', message: 'Toplam eksi olamaz.' });
-  } else if (fields.kdvSatirlari.length > 0) {
+  } else if (fields.belgeTuru !== 'mustahsil' && fields.kdvSatirlari.length > 0) {
     const check = moneyCheck(fields);
     const diff = Math.abs(check.farkKurus ?? 0);
     if (diff > 5) {
@@ -172,6 +180,33 @@ export function validateDocument(fields: DocumentFields, now = new Date()): Fiel
   }
 
   return warnings;
+}
+
+function mustahsilWarnings(fields: DocumentFields): FieldWarning[] {
+  const warnings: FieldWarning[] = [];
+  if (fields.brutTutar == null) warnings.push({ field: 'brutTutar', level: 'hata', message: 'Brüt tutar yok.' });
+  if (fields.netOdenen == null && fields.toplam == null) {
+    warnings.push({ field: 'netOdenen', level: 'hata', message: 'Net ödenen yok.' });
+  }
+  const math = mustahsilMath(fields);
+  if (math.farkKurus != null && Math.abs(math.farkKurus) > 5) {
+    warnings.push({
+      field: 'netOdenen',
+      level: Math.abs(math.farkKurus) > 100 ? 'hata' : 'uyari',
+      message: `Brüt eksi kesintiler, netten ${formatTr(fromKurus(Math.abs(math.farkKurus)))} TL farklı.`,
+    });
+  }
+  if (fields.brutTutar != null && fields.stopajOran != null && fields.stopajTutar != null && fields.stopajOran > 0) {
+    const expected = Math.round((toKurus(fields.brutTutar) * fields.stopajOran) / 100);
+    if (Math.abs(expected - toKurus(fields.stopajTutar)) > Math.max(5, Math.round(expected * 0.02))) {
+      warnings.push({
+        field: 'stopajTutar',
+        level: 'uyari',
+        message: `Stopaj %${fields.stopajOran} için beklenen ${formatTr(fromKurus(expected))} TL.`,
+      });
+    }
+  }
+  return warnings.filter((warning, index, list) => list.findIndex((item) => item.field === warning.field && item.message === warning.message) === index);
 }
 
 export function worstLevel(warnings: FieldWarning[]): 'ok' | 'uyari' | 'hata' {

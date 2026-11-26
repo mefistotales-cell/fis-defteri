@@ -2,26 +2,26 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Dialog } from '../components/ui.tsx';
 import { deliver } from '../lib/download.ts';
 import { currentMonth, documentMonth, formatMonthLabel, shiftMonth, toTrDate } from '../lib/dates.ts';
-import { formatTr } from '../lib/money.ts';
-import type { ExportDoc, SavedDocument } from '../lib/types.ts';
+import { VIEW_MONTH_KEY } from '../lib/settings.ts';
+import { completeFields, sinifKodu, sinifOzeti } from '../lib/classify.ts';
+import { formatTr, fromKurus, toKurus } from '../lib/money.ts';
+import type { ExportDoc, SavedDocument, SinifKodu } from '../lib/types.ts';
 import { belgeLabel, ODEME_LABEL } from '../lib/types.ts';
 import { validateDocument, worstLevel } from '../lib/validate.ts';
 import { LUCA_FATURA_COLUMN_LIMIT } from '../lib/columns.ts';
 import { useStore } from '../store.tsx';
 
-const MONTH_KEY = 'haskara.fis-defteri.month';
-
 export function Home() {
   const store = useStore();
   const cameraRef = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
-  const [month, setMonth] = useState(() => sessionStorage.getItem(MONTH_KEY) || currentMonth());
+  const [month, setMonth] = useState(() => sessionStorage.getItem(VIEW_MONTH_KEY) || currentMonth());
   const [exportOpen, setExportOpen] = useState(false);
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    sessionStorage.setItem(MONTH_KEY, month);
+    sessionStorage.setItem(VIEW_MONTH_KEY, month);
   }, [month]);
 
   const monthDocs = useMemo(
@@ -33,6 +33,11 @@ export function Home() {
   );
   const toplam = monthDocs.reduce((sum, doc) => sum + (doc.fields.toplam ?? 0), 0);
   const sorun = monthDocs.filter((doc) => worstLevel(validateDocument(doc.fields)) !== 'ok').length;
+  const otherMonth = store.docs
+    .map((doc) => documentMonth(doc.fields.tarih, doc.createdAt))
+    .filter((item) => item !== month)
+    .sort()
+    .at(-1);
   const tooManyColumns = store.settings.sutunlar.lucaFatura.filter((column) => column.enabled).length > LUCA_FATURA_COLUMN_LIMIT;
 
   async function runExport(kind: 'csv' | 'xlsx' | 'fis' | 'logo-alim' | 'logo-fis' | 'ozet') {
@@ -82,6 +87,7 @@ export function Home() {
             {monthDocs.length} belge · {formatTr(toplam)} TL
             {sorun ? ` · ${sorun} kontrol` : ''}
           </p>
+          <p className="text-xs text-muted">{classSummary(monthDocs)}</p>
         </div>
         <button type="button" className="min-h-12 min-w-12 rounded-full text-2xl" onClick={() => setMonth(shiftMonth(month, 1))} aria-label="Sonraki ay">
           ›
@@ -111,10 +117,21 @@ export function Home() {
       {store.ready && monthDocs.length === 0 ? (
         <section className="mt-8 rounded-3xl border border-dashed border-line bg-card px-5 py-8 text-center">
           <p className="font-display text-3xl">Bu ay fiş yok</p>
-          <p className="mx-auto mt-2 max-w-sm text-muted">
-            Yazar kasa fişini veya faturayı düz bir yere koyun, gölge düşürmeden çekin. Birden fazla fotoğrafı birlikte seçebilirsiniz.
-          </p>
-          <button type="button" className="mt-4 text-sm font-semibold text-olive-2" onClick={() => void store.loadSamples()}>
+          {otherMonth ? (
+            <>
+              <p className="mx-auto mt-2 max-w-sm text-muted">
+                Kayıtlı belgeler {formatMonthLabel(otherMonth)} içinde. Bu ayın listesi boş görünür.
+              </p>
+              <Button type="button" className="mt-4" onClick={() => setMonth(otherMonth)}>
+                {formatMonthLabel(otherMonth)} listesine git
+              </Button>
+            </>
+          ) : (
+            <p className="mx-auto mt-2 max-w-sm text-muted">
+              Yazar kasa fişini veya faturayı düz bir yere koyun, gölge düşürmeden çekin. Birden fazla fotoğrafı birlikte seçebilirsiniz.
+            </p>
+          )}
+          <button type="button" className="mt-4 block w-full text-sm font-semibold text-olive-2" onClick={() => void store.loadSamples()}>
             Örnek fiş ve faturayı yükle
           </button>
         </section>
@@ -187,7 +204,7 @@ function DocumentCard({ doc, onDelete }: { doc: SavedDocument; onDelete: () => v
             <p className="shrink-0 font-semibold">{doc.fields.toplam == null ? '—' : `${formatTr(doc.fields.toplam)} TL`}</p>
           </div>
           <p className="text-sm text-muted">
-            {toTrDate(doc.fields.tarih) || 'Tarih yok'} · {belgeLabel(doc.fields.belgeTuru)} · {ODEME_LABEL[doc.fields.odemeSekli]}
+            {toTrDate(doc.fields.tarih) || 'Tarih yok'} · {belgeLabel(doc.fields.belgeTuru)} · {sinifOzeti(doc.fields)} · {ODEME_LABEL[doc.fields.odemeSekli]}
           </p>
           {level !== 'ok' ? (
             <p className={level === 'hata' ? 'text-sm font-semibold text-bad' : 'text-sm font-semibold text-warn'}>
@@ -208,6 +225,30 @@ function DocumentCard({ doc, onDelete }: { doc: SavedDocument; onDelete: () => v
       </a>
     </li>
   );
+}
+
+function classSummary(docs: SavedDocument[]): string {
+  const totals: Record<SinifKodu, number> = { 'alis-mal': 0, 'alis-hizmet': 0, 'satis-mal': 0, 'satis-hizmet': 0 };
+  let mustahsilNet = 0;
+  for (const doc of docs) {
+    const fields = completeFields(doc.fields);
+    if (fields.belgeTuru === 'mustahsil') {
+      mustahsilNet += toKurus(fields.netOdenen ?? fields.toplam ?? 0);
+      continue;
+    }
+    for (const row of fields.kdvSatirlari) totals[sinifKodu(fields.yon, row.tur)] += toKurus(row.matrah) + toKurus(row.kdv);
+  }
+  const labels: Record<SinifKodu, string> = {
+    'alis-mal': 'Alış mal',
+    'alis-hizmet': 'Alış hizmet',
+    'satis-mal': 'Satış mal',
+    'satis-hizmet': 'Satış hizmet',
+  };
+  const parts = (Object.keys(labels) as SinifKodu[])
+    .filter((key) => totals[key] !== 0)
+    .map((key) => `${labels[key]} ${formatTr(fromKurus(totals[key]))} TL`);
+  if (mustahsilNet !== 0) parts.push(`Müstahsil net ${formatTr(fromKurus(mustahsilNet))} TL`);
+  return parts.join(' · ');
 }
 
 function toExportDoc(doc: SavedDocument): ExportDoc {

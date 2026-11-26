@@ -48,7 +48,7 @@ describe('Excel satırları', () => {
     expect(String(fis[4])).toContain('Z:118');
     expect(fis[11]).toBe(200);
     expect(fis[12]).toBe(1200);
-    expect(fis[14]).toBe('770');
+    expect(fis[14]).toBe('153');
     const fatura = sheet.rows[2];
     expect(fatura[0]).toBe('18.11.2026');
     expect(fatura[6]).toBe(500);
@@ -78,7 +78,7 @@ describe('Excel satırları', () => {
     expect(sheet.rows[0]).toContain('Borç');
     expect(sheet.rows[0]).toContain('Alacak');
     const fisLines = sheet.rows.filter((row) => row[0] === '1');
-    expect(fisLines.map((row) => row[2])).toEqual(['770', '191.20', '100']);
+    expect(fisLines.map((row) => row[2])).toEqual(['153', '191.20', '100']);
     expect(sumColumn(fisLines, borcIndex(sheet.rows[0]))).toBe(120000);
     expect(sumColumn(fisLines, alacakIndex(sheet.rows[0]))).toBe(120000);
     const faturaLines = sheet.rows.filter((row) => row[0] === '2');

@@ -85,3 +85,14 @@ export function documentMonth(tarih: string, createdAt: string): string {
   if (/^\d{4}-\d{2}/.test(createdAt)) return createdAt.slice(0, 7);
   return currentMonth();
 }
+
+/** After a save, show the document's own month so a fiş from another month is not hidden. */
+export function listMonthAfterSave(viewMonth: string, tarih: string, createdAt: string): string {
+  return documentMonth(tarih, createdAt) || viewMonth;
+}
+
+export function saveSuccessMessage(viewMonth: string, tarih: string, createdAt: string): { month: string; text: string } {
+  const month = listMonthAfterSave(viewMonth, tarih, createdAt);
+  const text = month === viewMonth ? 'Kaydedildi.' : `Kaydedildi. ${formatMonthLabel(month)} listesine alındı.`;
+  return { month, text };
+}

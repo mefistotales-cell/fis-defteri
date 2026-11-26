@@ -3,17 +3,23 @@ import { Button, Field, TextInput } from '../components/ui.tsx';
 import { DEFAULT_COLUMNS, LUCA_FATURA_COLUMN_LIMIT } from '../lib/columns.ts';
 import { cloneColumns } from '../lib/columns.ts';
 import { PROVIDERS } from '../lib/settings.ts';
-import type { AccountSettings, AppSettings, ColumnSpec, ProviderId } from '../lib/types.ts';
+import type { AppSettings, ColumnSpec, ProviderId } from '../lib/types.ts';
 import { testApiKey } from '../lib/vision.ts';
 import { useStore } from '../store.tsx';
 
-const ACCOUNT_ROWS: { key: keyof Omit<AccountSettings, 'kdv'>; label: string; hint: string }[] = [
-  { key: 'gider', label: 'Gider / mal hesabı', hint: 'Tarımda çoğu alış 770, üretim 740, ticari mal 153. Müşavir söyler.' },
-  { key: 'karsiHesap', label: 'Luca karşı hesap', hint: 'Fatura listesindeki matrah hesabı. Varsayılan gider hesabıyla aynıdır.' },
-  { key: 'kasa', label: 'Kasa (nakit)', hint: 'ÖKC fişinde nakit yazıyorsa alacak bu hesaba gider.' },
+const ACCOUNT_ROWS: { key: 'kasa' | 'kart' | 'havale' | 'saticilar' | 'alicilar'; label: string; hint: string }[] = [
+  { key: 'alicilar', label: 'Alıcılar (satış, açık hesap)', hint: 'Satışta borç 120. Tahsilat nakitse kasa kullanılır.' },
+  { key: 'saticilar', label: 'Satıcılar (alış, açık hesap)', hint: 'Alışta alacak 320.' },
+  { key: 'kasa', label: 'Kasa (nakit)', hint: 'Nakit alışta alacak, nakit satışta borç.' },
   { key: 'kart', label: 'POS / kart', hint: 'Birçok büro 108 kullanır. Sizde 102 ise onu yazın.' },
   { key: 'havale', label: 'Banka (havale)', hint: 'Havale veya EFT ile ödenen belgeler.' },
-  { key: 'saticilar', label: 'Satıcılar', hint: 'Açık hesap ve ödemesi belirsiz belgeler.' },
+];
+
+const SINIF_ROWS: { key: 'alis-mal' | 'alis-hizmet' | 'satis-mal' | 'satis-hizmet'; label: string }[] = [
+  { key: 'alis-mal', label: 'Alış mal (stok)' },
+  { key: 'alis-hizmet', label: 'Alış hizmet' },
+  { key: 'satis-mal', label: 'Satış mal' },
+  { key: 'satis-hizmet', label: 'Satış hizmet' },
 ];
 
 const KDV_ROWS: { key: string; label: string }[] = [
@@ -118,9 +124,70 @@ export function Settings() {
       </section>
 
       <section className="rounded-3xl bg-card p-4">
-        <h2 className="font-display text-3xl">Hesap kodları</h2>
-        <p className="mt-1 text-sm text-muted">Muhasebe fişindeki borç ve alacak bu kodlara yazılır. Bilmiyorsanız varsayılan kalsın.</p>
+        <h2 className="font-display text-3xl">Firma ve hesap kodları</h2>
+        <p className="mt-1 text-sm text-muted">
+          Satıcı sizseniz belge satış, değilse alış sayılır. ÖKC fişi çoğu zaman alıştır. Mal ve hizmet kodları Ayarlar’dan değişir.
+        </p>
         <div className="mt-3 space-y-3">
+          <Field label="Kendi unvanınız">
+            <TextInput value={settings.firmaUnvan} onChange={(event) => patch({ firmaUnvan: event.target.value })} />
+          </Field>
+          <Field label="Kendi VKN / TCKN">
+            <TextInput inputMode="numeric" value={settings.firmaVkn} onChange={(event) => patch({ firmaVkn: event.target.value })} />
+          </Field>
+          <p className="text-sm font-semibold">Müstahsil makbuzu</p>
+          <p className="text-xs text-muted">Logo fatura türü 26 (müstahsil makbuzu). 14 verilen fiyat farkıdır; değiştirmek serbest.</p>
+          {(
+            [
+              ['mustahsilMal', 'Brüt mal hesabı (borç)'],
+              ['mustahsilStopaj', 'Gelir vergisi stopajı (alacak)'],
+              ['mustahsilSgk', 'Bağ-Kur / SGK (alacak)'],
+              ['mustahsilBorsa', 'Borsa tescil (alacak)'],
+              ['mustahsilMera', 'Mera fonu (alacak)'],
+            ] as const
+          ).map(([key, label]) => (
+            <Field key={key} label={label}>
+              <TextInput
+                value={settings.hesaplar[key]}
+                onChange={(event) => patch({ hesaplar: { ...settings.hesaplar, [key]: event.target.value } })}
+              />
+            </Field>
+          ))}
+          <Field label="Logo müstahsil tipi">
+            <TextInput
+              inputMode="numeric"
+              value={String(settings.hesaplar.mustahsilLogoTip)}
+              onChange={(event) =>
+                patch({ hesaplar: { ...settings.hesaplar, mustahsilLogoTip: Number(event.target.value) || 0 } })
+              }
+            />
+          </Field>
+          {SINIF_ROWS.map((row) => (
+            <Field key={row.key} label={row.label}>
+              <div className="grid grid-cols-2 gap-2">
+                <TextInput
+                  aria-label={`${row.label} hesap`}
+                  value={settings.hesaplar.sinif[row.key]}
+                  onChange={(event) =>
+                    patch({ hesaplar: { ...settings.hesaplar, sinif: { ...settings.hesaplar.sinif, [row.key]: event.target.value } } })
+                  }
+                />
+                <TextInput
+                  aria-label={`${row.label} Logo tipi`}
+                  inputMode="numeric"
+                  value={String(settings.hesaplar.logoTip[row.key])}
+                  onChange={(event) =>
+                    patch({
+                      hesaplar: {
+                        ...settings.hesaplar,
+                        logoTip: { ...settings.hesaplar.logoTip, [row.key]: Number(event.target.value) || 0 },
+                      },
+                    })
+                  }
+                />
+              </div>
+            </Field>
+          ))}
           {ACCOUNT_ROWS.map((row) => (
             <Field key={row.key} label={row.label} hint={row.hint}>
               <TextInput
@@ -143,22 +210,16 @@ export function Settings() {
               />
             </Field>
           ))}
-          <div className="grid gap-3 min-[560px]:grid-cols-2">
-            <Field label="Logo fiş tipi" hint="Varsayılan 4: alınan hizmet">
-              <TextInput
-                inputMode="numeric"
-                value={String(settings.fisLogoTip)}
-                onChange={(event) => patch({ fisLogoTip: Number(event.target.value) || 0 })}
-              />
-            </Field>
-            <Field label="Logo fatura tipi" hint="Varsayılan 1: mal alım">
-              <TextInput
-                inputMode="numeric"
-                value={String(settings.faturaLogoTip)}
-                onChange={(event) => patch({ faturaLogoTip: Number(event.target.value) || 0 })}
-              />
-            </Field>
-          </div>
+          <Field label="Hesaplanan KDV %20 (satış)">
+            <TextInput
+              value={settings.hesaplar.kdvSatis['20'] ?? ''}
+              onChange={(event) =>
+                patch({
+                  hesaplar: { ...settings.hesaplar, kdvSatis: { ...settings.hesaplar.kdvSatis, '20': event.target.value } },
+                })
+              }
+            />
+          </Field>
         </div>
       </section>
 

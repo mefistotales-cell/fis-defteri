@@ -27,7 +27,7 @@ Ayarlar sayfasına kendi anahtarınızı yazın. Anahtar `localStorage` içinded
 
 | Servis | Ne zaman | Anahtar |
 | --- | --- | --- |
-| Google Gemini | Telefonda en sorunsuz seçenek. Varsayılan model `gemini-2.5-flash`. | [Google AI Studio](https://aistudio.google.com/apikey) |
+| Google Gemini | Telefonda en sorunsuz seçenek. Varsayılan model `gemini-flash-latest`. Yoğunlukta `gemini-flash-lite-latest` deneyin. | [Google AI Studio](https://aistudio.google.com/apikey) |
 | OpenAI | Model `gpt-4o-mini`. | [OpenAI](https://platform.openai.com/api-keys) |
 | OpenRouter | Tek anahtarla başka modeller. | [OpenRouter](https://openrouter.ai/keys) |
 | OpenAI uyumlu adres | Adres `/v1` ile bitsin. | Kendi adresiniz |
@@ -118,7 +118,7 @@ Logo fatura tipi sayısı varsayımdır, resmi bir Excel başlığı değildir: 
 | Logo alım ve Logo fiş | ExcelTrans kolonları kullanıcıya aittir. Sabit resmi şablon yoktur. | Başlık ve sırayı ExcelTrans şablonuna eşleyin. |
 | Muhasebeci özeti | Bu uygulamanın kendi sayfası. `Belgeler`, `Toplamlar`, `Okuma`. | Programa yüklemeyin. |
 
-Tevkifat okunmaz; sütun `0` gelir. Karşı hesap varsayılanı `770`’dir. Nakit `100`, kart `108`, havale `102`, açık hesap `320`. İndirilecek KDV `%1 → 191.01`, `%10 → 191.10`, `%20 → 191.20`. Tarımda gider çoğu zaman `740` veya `150`/`153` olur. Kodu mali müşavir söyler; Ayarlar’dan değiştirin, sonraki aylar aynı kodu kullanır.
+Tevkifat okunmaz; sütun `0` gelir. Sınıf, satıcıyı Ayarlar’daki kendi unvan ve VKN ile karşılaştırır: satıcı sizseniz satış, değilseniz alış. ÖKC fişi alış kalır. Mal (gübre, tohum, mazot…) ve hizmet (nakliye, kira, elektrik…) satır satır ayrılır. Varsayılan hesaplar: alış mal `153`, alış hizmet `770`, satış mal ve hizmet `600`. Açık hesapta satış `120` borç, alış `320` alacak. KDV alışta `191`, satışta `391`. Logo tipi: mal alım `1`, alınan hizmet `4`, satış `8`, verilen hizmet `9`. Nakit `100`, kart `108`, havale `102`. Excel’de dört sayfa vardır: Alis Mal, Alis Hizmet, Satis Mal, Satis Hizmet. Müstahsil makbuzu ayrı türdür ve her zaman alıştır: brüt `153` borç, stopaj `360` alacak, Bağ-Kur/SGK `361` alacak, net ödeme nakitse `100` değilse `320` alacak. Borsa tescil ve mera fonu varsayılan olarak `360` altındadır; Ayarlar’dan ayrılır. Logo tipi 26’dır (14 verilen fiyat farkıdır). Kodu mali müşavir söyler; Ayarlar’dan değiştirin.
 
 ## Testler
 

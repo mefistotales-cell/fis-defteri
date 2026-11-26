@@ -5,6 +5,8 @@ import {
   buildLogoFis,
   buildLucaFatura,
   buildLucaFis,
+  buildClassSheets,
+  buildMustahsilSheet,
   buildOzet,
   buildReadmeSheet,
   buildTotals,
@@ -26,7 +28,9 @@ export async function exportLucaFatura(
   month: string,
   maxRows = LUCA_LINE_LIMIT,
 ): Promise<DownloadFile[]> {
-  return paired(sortDocs(docs), settings, month, 'Luca-Fatura', maxRows, (part) => buildLucaFatura(part, settings));
+  return paired(sortDocs(docs), settings, month, 'Luca-Fatura', maxRows, (part) => buildLucaFatura(part, settings), (part) =>
+    [...buildClassSheets(part, settings, 'luca'), buildMustahsilSheet(part, settings)],
+  );
 }
 
 export async function exportLucaFis(docs: ExportDoc[], settings: AppSettings, month: string): Promise<DownloadFile[]> {
@@ -44,8 +48,14 @@ export async function exportLucaFis(docs: ExportDoc[], settings: AppSettings, mo
 }
 
 export async function exportLogoAlim(docs: ExportDoc[], settings: AppSettings, month: string): Promise<DownloadFile[]> {
-  const sheet = buildLogoAlim(sortDocs(docs), settings);
-  return [{ filename: fileName(settings.dosyaOneki, 'Logo-Alim', month, 'xlsx'), blob: await sheetsToBlob([sheet]) }];
+  const sorted = sortDocs(docs);
+  const sheet = buildLogoAlim(sorted, settings);
+  return [
+    {
+      filename: fileName(settings.dosyaOneki, 'Logo-Alim', month, 'xlsx'),
+      blob: await sheetsToBlob([sheet, ...buildClassSheets(sorted, settings, 'logo'), buildMustahsilSheet(sorted, settings)]),
+    },
+  ];
 }
 
 export async function exportLogoFis(docs: ExportDoc[], settings: AppSettings, month: string): Promise<DownloadFile[]> {
@@ -72,6 +82,7 @@ async function paired(
   label: string,
   maxRows: number,
   build: (part: ExportDoc[]) => TableSheet,
+  extras: (part: ExportDoc[]) => TableSheet[] = () => [],
 ): Promise<DownloadFile[]> {
   const groups = chunkDocs(docs, maxRows, maxRows, () => 1);
   const files: DownloadFile[] = [];
@@ -81,7 +92,7 @@ async function paired(
     const parts = groups.length;
     const xlsxName = fileName(settings.dosyaOneki, label, month, 'xlsx', part, parts);
     const csvName = fileName(settings.dosyaOneki, label, month, 'csv', part, parts);
-    files.push({ filename: xlsxName, blob: await sheetsToBlob([sheet]) });
+    files.push({ filename: xlsxName, blob: await sheetsToBlob([sheet, ...extras(groups[index])]) });
     files.push({
       filename: csvName,
       blob: csvBlob(sheet.rows, settings.csvAyrac),

@@ -11,7 +11,8 @@ describe('model yanıtı', () => {
     expect(fields.vknTckn).toBe('6123456784');
     expect(fields.belgeNo).toBe('004218');
     expect(fields.zNo).toBe('118');
-    expect(fields.kdvSatirlari).toEqual([{ oran: 20, matrah: 1000, kdv: 200 }]);
+    expect(fields.kdvSatirlari).toEqual([{ oran: 20, matrah: 1000, kdv: 200, tur: 'mal', aciklama: '' }]);
+    expect(fields.yon).toBe('alis');
     expect(fields.toplam).toBe(1200);
     expect(fields.odemeSekli).toBe('nakit');
     expect(fields.guven.toplam).toBe('yuksek');
@@ -23,8 +24,8 @@ describe('model yanıtı', () => {
     expect(fields.belgeTuru).toBe('fatura');
     expect(fields.odemeSekli).toBe('acik');
     expect(fields.kdvSatirlari).toEqual([
-      { oran: 1, matrah: 500, kdv: 5 },
-      { oran: 10, matrah: 250, kdv: 25 },
+      { oran: 1, matrah: 500, kdv: 5, tur: 'mal', aciklama: '' },
+      { oran: 10, matrah: 250, kdv: 25, tur: 'mal', aciklama: '' },
     ]);
     expect(fields.toplam).toBe(782);
   });

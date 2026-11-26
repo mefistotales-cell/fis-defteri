@@ -10,12 +10,36 @@ export class VisionError extends Error {
   }
 }
 
+export const GEMINI_RETRY_DELAYS_MS = [1000, 2000, 4000];
+
 export function visionFailure(status: number, body: string): string {
   if (status === 401 || status === 403) return 'API anahtarı kabul edilmedi. Ayarlardan kontrol edin.';
   if (status === 429) return 'Kota veya hız sınırı doldu. Biraz bekleyip yeniden deneyin.';
   if (status === 404) return 'Model bulunamadı. Ayarlardaki model adını kontrol edin.';
+  if (status === 503) {
+    return 'Gemini şu an yoğun (503). Biraz sonra yeniden deneyin veya Ayarlar’da modeli gemini-flash-lite-latest yapın.';
+  }
   const detail = body.replace(/\s+/g, ' ').trim().slice(0, 180);
   return detail ? `Okuma servisi ${status} döndü. ${detail}` : `Okuma servisi ${status} döndü.`;
+}
+
+export async function requestWith503Retry(
+  run: () => Promise<Response>,
+  sleep: (ms: number) => Promise<void> = delay,
+): Promise<Response> {
+  let response: Response | null = null;
+  for (let attempt = 0; attempt <= GEMINI_RETRY_DELAYS_MS.length; attempt += 1) {
+    response = await run();
+    if (response.status !== 503 || attempt === GEMINI_RETRY_DELAYS_MS.length) return response;
+    await sleep(GEMINI_RETRY_DELAYS_MS[attempt]);
+  }
+  return response ?? new Response('', { status: 503 });
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }
 
 export async function extractFromImage(settings: AppSettings, image: Blob): Promise<DocumentFields> {
@@ -41,14 +65,17 @@ export async function testApiKey(settings: AppSettings): Promise<void> {
   const model = resolvedModel(settings);
   if (settings.provider === 'gemini') {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`;
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ role: 'user', parts: [{ text: 'Yanıt olarak yalnızca TAMAM yaz.' }] }],
-        generationConfig: { temperature: 0, maxOutputTokens: 20 },
+    const response = await requestWith503Retry(() =>
+      fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: 'Yanıt olarak yalnızca TAMAM yaz.' }] }],
+          generationConfig: { temperature: 0, maxOutputTokens: 20 },
+        }),
+        signal: AbortSignal.timeout(45000),
       }),
-    });
+    );
     if (!response.ok) throw new VisionError(visionFailure(response.status, await response.text()));
     return;
   }
@@ -71,20 +98,22 @@ async function gemini(model: string, key: string, base64: string): Promise<strin
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`;
   let response: Response;
   try {
-    response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [
-          {
-            role: 'user',
-            parts: [{ text: EXTRACTION_PROMPT }, { inline_data: { mime_type: 'image/jpeg', data: base64 } }],
-          },
-        ],
-        generationConfig: { temperature: 0, responseMimeType: 'application/json' },
+    response = await requestWith503Retry(() =>
+      fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: 'user',
+              parts: [{ text: EXTRACTION_PROMPT }, { inline_data: { mime_type: 'image/jpeg', data: base64 } }],
+            },
+          ],
+          generationConfig: { temperature: 0, responseMimeType: 'application/json' },
+        }),
+        signal: AbortSignal.timeout(45000),
       }),
-      signal: AbortSignal.timeout(45000),
-    });
+    );
   } catch {
     throw new VisionError('Gemini’ye bağlanılamadı. İnterneti kontrol edin.');
   }

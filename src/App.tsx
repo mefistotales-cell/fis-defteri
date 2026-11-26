@@ -59,6 +59,23 @@ export default function App() {
         </div>
         <div className="h-1 bg-clay" />
       </header>
+      {store.notice ? (
+        <div
+          role={store.notice.tone === 'bad' ? 'alert' : 'status'}
+          className={
+            store.notice.tone === 'bad'
+              ? 'sticky top-0 z-30 bg-bad-bg px-4 py-3 text-bad'
+              : 'sticky top-0 z-30 bg-ok-bg px-4 py-3 text-ok'
+          }
+        >
+          <div className="mx-auto flex max-w-6xl items-start justify-between gap-3">
+            <p className="font-semibold">{store.notice.text}</p>
+            <button type="button" className="min-h-10 shrink-0 font-semibold" onClick={store.dismissNotice}>
+              Kapat
+            </button>
+          </div>
+        </div>
+      ) : null}
       {!store.settings.apiKey && route.name === 'home' ? (
         <p className="bg-warn-bg px-4 py-2 text-center text-sm text-warn">
           Okumak için <a className="font-semibold underline" href="#/ayarlar">Ayarlar</a>’dan kendi API anahtarınızı girin. Örnek belgeler anahtarsız da açılır.

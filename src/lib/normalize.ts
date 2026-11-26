@@ -1,8 +1,9 @@
+import { lineTur, parseKalemTuru } from './classify.ts';
 import { toIsoDate, toTime } from './dates.ts';
 import { fromKurus, parseTurkishNumber, toKurus } from './money.ts';
 import { digitsOnly } from './taxId.ts';
 import { cleanText } from './text.ts';
-import type { BelgeTuru, Confidence, DocumentFields, KdvSatiri, OdemeSekli } from './types.ts';
+import type { BelgeTuru, Confidence, DocumentFields, KalemTuru, KdvSatiri, OdemeSekli } from './types.ts';
 import { emptyFields } from './types.ts';
 
 export function parseModelJson(text: string): unknown {
@@ -36,6 +37,7 @@ function confidence(value: unknown): Confidence | undefined {
 
 function belgeTuru(value: unknown): { tur: BelgeTuru; sure: boolean } {
   const raw = String(value ?? '').toLocaleLowerCase('tr');
+  if (raw.includes('müstahsil') || raw.includes('mustahsil')) return { tur: 'mustahsil', sure: true };
   if (raw.includes('fatura') || raw.includes('arşiv') || raw.includes('arsiv') || raw.includes('invoice')) {
     return { tur: 'fatura', sure: true };
   }
@@ -63,7 +65,7 @@ function oranOf(value: unknown): number | null {
   return scaled;
 }
 
-function kdvRows(raw: unknown): KdvSatiri[] {
+function kdvRows(raw: unknown, belgeTuru: BelgeTuru, fallbackText: string): KdvSatiri[] {
   const items: unknown[] = [];
   if (Array.isArray(raw)) items.push(...raw);
   const record = asRecord(raw);
@@ -74,26 +76,32 @@ function kdvRows(raw: unknown): KdvSatiri[] {
     }
   }
 
-  const merged = new Map<number, { matrah: number; kdv: number }>();
+  const merged = new Map<string, { oran: number; tur: KalemTuru; aciklama: string; matrah: number; kdv: number }>();
   for (const item of items) {
     const row = asRecord(item);
     if (!row) continue;
     const oran = oranOf(row.oran ?? row.rate ?? row.kdvOrani ?? row.oranYuzde);
     if (oran == null) continue;
+    const aciklama = text(row.aciklama ?? row.mal ?? row.ad);
+    const tur = lineTur(aciklama || fallbackText, parseKalemTuru(row.tur) ?? row.tur, belgeTuru);
     const matrah = parseTurkishNumber(row.matrah ?? row.base ?? row.matrahTutar ?? row.kdvsiz) ?? 0;
     const kdv = parseTurkishNumber(row.kdv ?? row.kdvTutari ?? row.kdvTutar ?? row.tax) ?? 0;
-    const current = merged.get(oran) ?? { matrah: 0, kdv: 0 };
+    const key = `${oran}|${tur}`;
+    const current = merged.get(key) ?? { oran, tur, aciklama, matrah: 0, kdv: 0 };
     current.matrah += toKurus(matrah);
     current.kdv += toKurus(kdv);
-    merged.set(oran, current);
+    if (!current.aciklama && aciklama) current.aciklama = aciklama;
+    merged.set(key, current);
   }
 
-  return [...merged.entries()]
-    .sort((a, b) => a[0] - b[0])
-    .map(([oran, sums]) => ({
-      oran,
-      matrah: fromKurus(sums.matrah),
-      kdv: fromKurus(sums.kdv),
+  return [...merged.values()]
+    .sort((a, b) => a.oran - b.oran || a.tur.localeCompare(b.tur))
+    .map((row) => ({
+      oran: row.oran,
+      tur: row.tur,
+      aciklama: row.aciklama,
+      matrah: fromKurus(row.matrah),
+      kdv: fromKurus(row.kdv),
     }))
     .filter((row) => row.matrah !== 0 || row.kdv !== 0);
 }
@@ -111,11 +119,24 @@ export function normalizeExtraction(raw: unknown): DocumentFields {
   fields.belgeNo = text(record.belgeNo ?? record.fisNo ?? record.faturaNo ?? record.evrakNo);
   fields.zNo = text(record.zNo ?? record.z ?? record.zRaporNo);
   fields.ekuNo = text(record.ekuNo ?? record.eku);
-  fields.kdvSatirlari = kdvRows(record.kdv ?? record.kdvSatirlari ?? record.kdvDokumu);
+  fields.aliciUnvan = text(record.aliciUnvan ?? record.alici ?? record.buyer);
+  fields.aliciVknTckn = digitsOnly(text(record.aliciVknTckn ?? record.aliciVkn ?? record.buyerVkn));
+  fields.aciklama = text(record.aciklama ?? record.mal ?? record.description);
+  fields.urunCinsi = text(record.urunCinsi ?? record.urun ?? record.malCinsi);
+  fields.birim = text(record.birim);
+  fields.miktar = parseTurkishNumber(record.miktar);
+  fields.birimFiyat = parseTurkishNumber(record.birimFiyat ?? record.fiyat);
+  fields.brutTutar = parseTurkishNumber(record.brutTutar ?? record.brut ?? record.brutTutarTl);
+  fields.stopajOran = parseTurkishNumber(record.stopajOran ?? record.gelirVergisiOran);
+  fields.stopajTutar = parseTurkishNumber(record.stopajTutar ?? record.stopaj ?? record.gelirVergisi);
+  fields.borsaTescil = parseTurkishNumber(record.borsaTescil ?? record.borsa);
+  fields.sgkKesinti = parseTurkishNumber(record.sgkKesinti ?? record.bagkur ?? record.bagKur ?? record.sgk);
+  fields.meraFonu = parseTurkishNumber(record.meraFonu ?? record.mera);
+  fields.netOdenen = parseTurkishNumber(record.netOdenen ?? record.net ?? record.netTutar);
+  fields.kdvSatirlari = kdvRows(record.kdv ?? record.kdvSatirlari ?? record.kalemler ?? record.kdvDokumu, fields.belgeTuru, fields.aciklama);
   const toplam = parseTurkishNumber(record.toplam ?? record.genelToplam ?? record.total);
   fields.toplam = toplam;
   fields.odemeSekli = odeme(record.odemeSekli ?? record.odeme ?? record.payment);
-  fields.aciklama = text(record.aciklama ?? record.mal ?? record.description);
 
   const guven = asRecord(record.guven ?? record.confidence) ?? {};
   for (const [key, value] of Object.entries(guven)) {
@@ -123,5 +144,12 @@ export function normalizeExtraction(raw: unknown): DocumentFields {
     if (level) fields.guven[key] = level;
   }
   if (!tur.sure) fields.guven.belgeTuru = 'dusuk';
+  if (fields.belgeTuru === 'mustahsil') {
+    fields.yon = 'alis';
+    if (!fields.saticiUnvan) fields.saticiUnvan = text(record.uretici ?? record.ureticiAdSoyad ?? record.adSoyad);
+    if (!fields.belgeNo) fields.belgeNo = text(record.makbuzNo ?? record.makbuz);
+    if (!fields.vknTckn) fields.vknTckn = digitsOnly(text(record.ureticiTckn ?? record.tckn));
+    if (fields.toplam == null) fields.toplam = fields.netOdenen;
+  }
   return fields;
 }

@@ -38,7 +38,7 @@ export function NewReview() {
       imageUrl={item.previewUrl}
       initialFields={item.fields!}
       banner={item.error}
-      onSave={(next) => void store.saveCurrent(next)}
+      onSave={(next) => store.saveCurrent(next)}
       onCancel={store.discardCurrent}
       onRetry={item.image ? store.retryCurrent : undefined}
     />
@@ -67,7 +67,7 @@ export function SavedReview({ id }: { id: string }) {
       key={`${doc.id}-${doc.updatedAt}`}
       imageUrl={url}
       initialFields={doc.fields}
-      onSave={(next) => void store.saveExisting(doc, next)}
+      onSave={(next) => store.saveExisting(doc, next)}
       onCancel={() => {
         window.location.hash = '#/';
       }}
